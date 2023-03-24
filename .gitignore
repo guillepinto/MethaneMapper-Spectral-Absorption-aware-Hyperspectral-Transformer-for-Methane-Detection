@@ -5,3 +5,5 @@ methanemapper/data/train
 methanemapper/data/val
 data/all_gt_masks
 methanemapper/exps
+methanemapper/data/annotations_2020
+methanemapper/data/annotations_16171819
