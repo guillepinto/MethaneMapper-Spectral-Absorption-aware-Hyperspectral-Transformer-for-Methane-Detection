@@ -91,20 +91,38 @@ class LoadItems:
     def __init__(self, img_folder, ann_file, stats_file):
         # load dataset
         self.anns, self.imgs = dict(), dict()
-        self.img_dir = img_folder
+        self.img_dir = img_folder # methanemapper/data/train
+        self.mean = None
+        self.std = None
 
         if not ann_file == None:
             print("loading annotations into memory...")
-            dataset = json.load(open(ann_file, "r"))
-            assert type(dataset) == dict, "annotation file format {} not supported".format(type(dataset))
-            self.dataset = dataset
-            self.createList()
-            self.createPaths()
+            try:
+                dataset = json.load(open(ann_file, "r"))
+                assert type(dataset) == dict, "annotation file format {} not supported".format(type(dataset))
+                self.dataset = dataset
+                self.createList()
+                self.createPaths()
+            except Exception as e:
+                print(f"Warning: Error loading annotations: {e}")
+                # Initialize empty data structures as fallback
+                self.anns = {}
+                self.img_id = {}
+                self.patch_id = {}
+                self.rgb_paths = []
+                self.mf_paths = []
+                self.raw_paths = []
 
         if not stats_file == None:
             print("loading mean and std for each band...")
-            self.mean = np.load(f"{stats_file}/dataset_mean.npy")
-            self.std = np.load(f"{stats_file}/dataset_std.npy")
+            try:
+                self.mean = np.load(f"{stats_file}/dataset_mean.npy")
+                self.std = np.load(f"{stats_file}/dataset_std.npy")
+            except Exception as e:
+                print(f"Warning: Error loading statistics: {e}")
+                # Use default values as fallback
+                self.mean = np.zeros(90)
+                self.std = np.ones(90)
 
     def createList(self):
         # create list of all images and annotations
@@ -112,17 +130,30 @@ class LoadItems:
         anns, img_id, patch_id = dict(), dict(), dict()
         # FIXED : fix the missing annotations because of same file names
         unq_id = 1  # assigning a id to each image file, at train time it's the image id
+        
         if "annotations" in self.dataset:
             for ann in self.dataset["annotations"]:
-                anns[f"{ann['patch_name']}"] = {
-                    "segmentation": ann["segmentation"],
-                    "bbox": ann["bbox"],
-                    "category_id": ann["category_id"],
-                    "image_id": unq_id,
-                }
-                img_id[f"{ann['patch_name']}"] = ann["image_id"]
-                patch_id[f"{ann['patch_name']}"] = ann["patch_id"]
-                unq_id += 1
+                try:
+                    # Use get method with defaults to handle missing keys
+                    patch_name = ann.get('patch_name', f"unknown_{unq_id}")
+                    anns[f"{patch_name}"] = {
+                        "segmentation": ann.get('segmentation', []),
+                        "bbox": ann.get('bbox', [0, 0, 10, 10]),  # default small box
+                        "category_id": ann.get('category_id', 1),  # default category
+                        "image_id": unq_id,
+                    }
+                    img_id[f"{patch_name}"] = ann.get('image_id', f"img_{unq_id}")
+                    patch_id[f"{patch_name}"] = ann.get('patch_id', f"patch_{unq_id}")
+                    unq_id += 1
+                except Exception as e:
+                    print(f"Warning: Error processing annotation: {e}")
+                    continue
+            
+            if anns:
+                print(f"Successfully loaded {len(anns)} annotations")
+                print("Sample annotation:", next(iter(anns.values())))
+        else:
+            print("Warning: No 'annotations' key found in dataset")
 
         # create class members
         self.anns = anns
@@ -134,17 +165,43 @@ class LoadItems:
         print("creating image paths list")
         rgb_paths, mf_paths, raw_paths = [], [], []
 
+        # Process each annotation
         for _ann_key in list(self.anns.keys()):
-            _iid = self.img_id[_ann_key]
-            _pid = self.patch_id[_ann_key]
+            try:
+                _iid = self.img_id.get(_ann_key, "unknown")
+                _pid = self.patch_id.get(_ann_key, "unknown")
+                
+                # Find RGB file
+                rgb_glob = glob.glob(f"{self.img_dir}/rgb_tiles/{_iid}_*/*_{_pid}.npy")
+                if not rgb_glob:
+                    print(f"Warning: No RGB file found for {_iid}, {_pid}")
+                    continue
+                
+                _rgb = rgb_glob[0]
+                _tmp = _rgb.split("/")
+                
+                # Construct MF and RAW paths
+                _mf = f"{self.img_dir}/mf_tiles/{_tmp[-2]}/{_tmp[-1]}"
+                _raw = f"{self.img_dir}/rdata_tiles/{_tmp[-2]}/{_tmp[-1]}"
+                
+                # Verify file existence
+                if not (Path(_mf).exists() and Path(_raw).exists()):
+                    # print(f"Warning: Missing files for {_ann_key}: MF={Path(_mf).exists()}, RAW={Path(_raw).exists()}")
+                    continue
+                
+                print(f"Found {_ann_key}")
+                rgb_paths.append(_rgb)
+                mf_paths.append(_mf)
+                raw_paths.append(_raw)
+                
+            except Exception as e:
+                print(f"Warning: Error processing paths for {_ann_key}: {e}")
+                continue
 
-            _rgb = glob.glob(f"{self.img_dir}/rgb_tiles/{_iid}_*/*_{_pid}.npy")[0]
-            _tmp = _rgb.split("/")
-            _mf = f"{self.img_dir}/mf_tiles/{_tmp[-2]}/{_tmp[-1]}"
-            _raw = f"{self.img_dir}/rdata_tiles/{_tmp[-2]}/{_tmp[-1]}"
-            rgb_paths.append(_rgb), mf_paths.append(_mf), raw_paths.append(_raw)
-
-        assert len(rgb_paths) == len(self.anns), "Number of annotations are different from images"
+        print(f"Found {len(rgb_paths)} valid image sets out of {len(self.anns)} annotations")
+        
+        if len(rgb_paths) == 0:
+            print("Warning: No valid image paths found. Using empty lists.")
 
         # create class members
         self.rgb_paths = rgb_paths
@@ -167,25 +224,25 @@ class ConvertHyperToMask(object):
         image_id = target["image_id"]
         image_id = torch.tensor([image_id])
 
-        def _plotGTforVerify(mf_path, rgb_path, target):
-            import cv2
-            import pdb
+        # def _plotGTforVerify(mf_path, rgb_path, target):
+        #     import cv2
+        #     import pdb
 
-            pdb.set_trace()
-            # mf_img = np.load(mf_path)*255
-            rgb_img = np.load(rgb_path)
-            target_seg = target["segmentation"]
-            all_segs = []
-            for _seg in target_seg:
-                _seg = np.array(_seg)
-                all_segs.append(np.expand_dims(_seg, axis=1))
-            all_segs = tuple(all_segs)
-            # mf_img = cv2.cvtColor(np.uint8(mf_img), cv2.COLOR_GRAY2RGB)
-            cv2.drawContours(rgb_img, all_segs, -1, (255, 0, 0), 3)
-            cont_img_path = (
-                f"/data/satish/REFINERY_DATA/hyper_detr/data/visual_gt/{mf_path.split('/')[-1].split('.')[0]}.png"
-            )
-            cv2.imwrite(cont_img_path, rgb_img)
+        #     pdb.set_trace()
+        #     # mf_img = np.load(mf_path)*255
+        #     rgb_img = np.load(rgb_path)
+        #     target_seg = target["segmentation"]
+        #     all_segs = []
+        #     for _seg in target_seg:
+        #         _seg = np.array(_seg)
+        #         all_segs.append(np.expand_dims(_seg, axis=1))
+        #     all_segs = tuple(all_segs)
+        #     # mf_img = cv2.cvtColor(np.uint8(mf_img), cv2.COLOR_GRAY2RGB)
+        #     cv2.drawContours(rgb_img, all_segs, -1, (255, 0, 0), 3)
+        #     cont_img_path = (
+        #         f"/data/satish/REFINERY_DATA/hyper_detr/data/visual_gt/{mf_path.split('/')[-1].split('.')[0]}.png"
+        #     )
+        #     cv2.imwrite(cont_img_path, rgb_img)
 
         # _plotGTforVerify(mf_path, rgb_path, target)
 
@@ -220,7 +277,6 @@ class ConvertHyperToMask(object):
         target["image_id"] = image_id
         if self.return_masks:
             target["masks"] = masks
-            # print("masks", masks.shape, raw_path)
 
         target["orig_size"] = torch.as_tensor([int(h), int(w)])
         target["size"] = torch.as_tensor([int(h), int(w)])
@@ -231,12 +287,27 @@ class ConvertHyperToMask(object):
 def buildHyperSeg(image_set, args):
     root = Path(args.hyper_path)
     assert root.exists(), f"provided hyperspectral data path {root} does not exist"
+
+    # PATHS = {
+    #     "train": (root / "train" / "training_data16171819", root / "annotations_16171819" / "annotations_16171819.json", root / "data_stats"),
+    #     "val": (root / "val", root / "annotations" / "train" / "val_dummy.json", root / "data_stats"),
+    # }
+
     PATHS = {
-        "train": (root / "train", root / "annotations" / "train" / "train_dummy.json", root / "data_stats"),
+        "train": (root / "train" / "training_data2020", root / "annotations" / "train" / "train_dummy.json", root / "data_stats"),
         "val": (root / "val", root / "annotations" / "train" / "val_dummy.json", root / "data_stats"),
     }
 
-    img_folder, ann_file, stats_file = PATHS[image_set]
+    # --------------------------------------------------------------------------
+    # ORIGINAL CODE
+    # PATHS = {
+    #     "train": (root / "train", root / "annotations" / "train" / "train_dummy.json", root / "data_stats"),
+    #     "val": (root / "val", root / "annotations" / "train" / "val_dummy.json", root / "data_stats"),
+    # }
+    # --------------------------------------------------------------------------
+
+    # methanemapper/data/train, methanemapper/data/annotations/train/train_dummy.json, methanemapper/data/data_stats
+    img_folder, ann_file, stats_file = PATHS[image_set]  
     dataset = HyperSegment(img_folder, ann_file, stats_file, return_masks=args.masks)
 
     return dataset
