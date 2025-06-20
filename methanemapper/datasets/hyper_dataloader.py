@@ -174,7 +174,7 @@ class LoadItems:
                 # Find RGB file
                 rgb_glob = glob.glob(f"{self.img_dir}/rgb_tiles/{_iid}_*/*_{_pid}.npy")
                 if not rgb_glob:
-                    print(f"Warning: No RGB file found for {_iid}, {_pid}")
+                    # print(f"Warning: No RGB file found for {_iid}, {_pid}")
                     continue
                 
                 _rgb = rgb_glob[0]
@@ -285,29 +285,21 @@ class ConvertHyperToMask(object):
 
 
 def buildHyperSeg(image_set, args):
-    root = Path(args.hyper_path)
-    assert root.exists(), f"provided hyperspectral data path {root} does not exist"
+    if image_set == "train":
+        img_folder = Path(args.train_img_folder)
+        ann_file = Path(args.train_ann_file)
+    elif image_set == "val":
+        img_folder = Path(args.val_img_folder)
+        ann_file = Path(args.val_ann_file)
+    else:
+        raise ValueError(f"Unknown image_set: {image_set}")
 
-    # PATHS = {
-    #     "train": (root / "train" / "training_data16171819", root / "annotations_16171819" / "annotations_16171819.json", root / "data_stats"),
-    #     "val": (root / "val", root / "annotations" / "train" / "val_dummy.json", root / "data_stats"),
-    # }
+    stats_file = Path(args.stats_file_path)
 
-    PATHS = {
-        "train": (root / "train" / "training_data2020", root / "annotations" / "train" / "train_dummy.json", root / "data_stats"),
-        "val": (root / "val", root / "annotations" / "train" / "val_dummy.json", root / "data_stats"),
-    }
+    assert img_folder.exists(), f"provided image folder path {img_folder} does not exist"
+    assert ann_file.exists(), f"provided annotation file path {ann_file} does not exist"
+    assert stats_file.exists(), f"provided stats file path {stats_file} does not exist"
 
-    # --------------------------------------------------------------------------
-    # ORIGINAL CODE
-    # PATHS = {
-    #     "train": (root / "train", root / "annotations" / "train" / "train_dummy.json", root / "data_stats"),
-    #     "val": (root / "val", root / "annotations" / "train" / "val_dummy.json", root / "data_stats"),
-    # }
-    # --------------------------------------------------------------------------
-
-    # methanemapper/data/train, methanemapper/data/annotations/train/train_dummy.json, methanemapper/data/data_stats
-    img_folder, ann_file, stats_file = PATHS[image_set]  
     dataset = HyperSegment(img_folder, ann_file, stats_file, return_masks=args.masks)
 
     return dataset
