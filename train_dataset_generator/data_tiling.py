@@ -3,6 +3,8 @@ import numpy as np
 import math
 import shutil
 import cv2
+import rasterio  
+import argparse
 
 
 class DataTiling:
@@ -12,7 +14,7 @@ class DataTiling:
         self.offset = (offset, offset)
 
     def dataTiling(self, img, filename, dir_path, filetype=None):
-        # create tiles directory
+        # create tiles directory for the current file
         _dir_path = f"{dir_path}/{filename}_tiles"
         self.createDirectory(_dir_path)
 
@@ -24,60 +26,100 @@ class DataTiling:
                     self.offset[0] * j : min(self.offset[0] * j + self.tile_size[0], img_shape[1]),
                 ]
 
-                if filetype is None:
-                    tile_name = f"{filename}_{i}_{j}.npy"
-                elif filetype is "png":
+                if filetype == "png":
                     tile_name = f"{filename}_{i}_{j}.png"
+                else:
+                    tile_name = f"{filename}_{i}_{j}.npy"
 
-                if tile_name not in _dir_path:
-                    if filetype is None:
-                        np.save(os.path.join(_dir_path, tile_name), tile)
-                    if filetype is "png":
+                # Ensure tile is not empty before saving
+                if tile.shape[0] > 0 and tile.shape[1] > 0:
+                    if filetype == "png":
                         cv2.imwrite(os.path.join(_dir_path, tile_name), tile)
+                    else:
+                        np.save(os.path.join(_dir_path, tile_name), tile)
 
     def createDirectory(self, _dir_path):
-        if not (os.path.isdir(_dir_path)):
-            os.mkdir(_dir_path)
-            print("\n Created", _dir_path)
-        elif os.path.isdir(_dir_path):
-            print("\n Already exist", _dir_path, "deleting it")
+        if os.path.isdir(_dir_path):
+            print(f"Directory '{_dir_path}' already exists. Removing and recreating.")
             shutil.rmtree(_dir_path)
-            os.mkdir(_dir_path)
-            print("\n Created", _dir_path)
+        os.makedirs(_dir_path)
+        print(f"Created directory: '{_dir_path}'")
 
 
-def main(ROOT):
-    # gt_img_dir = f"{ROOT}/gt_img"
-    gt_mask_dir = f"{ROOT}/gt_mask"
-    # gt_img_tiles = f"{ROOT}/gt_img_tiles"
-    gt_mask_tiles = f"{ROOT}/gt_mask_tiles"
+def main(input_dir, destination_dir, file_type):
+    """
+    Reads images from an input directory, tiles them, and saves them to the destination directory.
+    Handles .png, .npy, and 4-channel GeoTIFF (.tif, .tiff) files.
+    For GeoTIFFs, it assumes the 4th channel is the mask to be tiled.
+    """
+    # Ensure the main destination directory exists
+    os.makedirs(destination_dir, exist_ok=True)
 
-    # all_imgs = os.listdir(gt_img_dir)
-    all_masks = os.listdir(gt_mask_dir)
-    # all_img_paths = [os.path.join(gt_img_dir, _name) for _name in all_imgs]
-    all_mask_paths = [os.path.join(gt_mask_dir, _name) for _name in all_masks]
+    supported_extensions = (".png", ".npy", ".tif", ".tiff")
+    all_files = [f for f in os.listdir(input_dir) if f.endswith(supported_extensions)]
+    all_paths = [os.path.join(input_dir, _name) for _name in all_files]
+
+    if not all_paths:
+        print(f"No supported files found in '{input_dir}'. Please add your files and run again.")
+        return
 
     # initializing DataTiling class
     DTObj = DataTiling()
 
-    def _callDataTiling(all_paths, dest_dir):
-        for _img_path in all_paths:
-            if _img_path.split(".")[-1] == "npy":
-                img = np.load(_img_path)
-            elif _img_path.split(".")[-1] == "png":
-                img = cv2.imread(_img_path)
-            else:
-                continue
-            filename = _img_path.split("/")[-1].split(".")[0]
-            DTObj.dataTiling(img, filename, dest_dir, filetype="png")
+    for _path in all_paths:
+        print(f"\nProcessing {_path}")
+        img = None
+        filename = os.path.basename(_path).split(".")[0]
+        try:
+            if _path.endswith((".tif", ".tiff")):
+                with rasterio.open(_path) as src:
+                    # For GeoTIFFs, we assume we want the 4th channel as a mask
+                    if src.count == 4:
+                        img = src.read(4)
+                    else:
+                        print(f"Warning: GeoTIFF {_path} has {src.count} channels, but expected 4 to extract a mask. Skipping.")
+                        continue
+            elif _path.endswith(".png"):
+                # Use IMREAD_UNCHANGED to handle images with an alpha channel correctly
+                img = cv2.imread(_path, cv2.IMREAD_UNCHANGED)
+            elif _path.endswith(".npy"):
+                img = np.load(_path)
 
-    # create tiles
-    # _callDataTiling(all_img_paths, gt_img_tiles)
-    _callDataTiling(all_mask_paths, gt_mask_tiles)
+            if img is not None:
+                DTObj.dataTiling(img, filename, destination_dir, filetype=file_type)
+
+        except Exception as e:
+            print(f"Error processing {_path}: {e}")
 
 
 if __name__ == "__main__":
-    # ROOT = "/data/satish/REFINERY_DATA/create_dataset/data2020/training_data2020"
-    # ROOT = "/data/satish/REFINERY_DATA/create_dataset/Methane_leakages_at_oil_refineries/data"
-    ROOT = "/data/satish/REFINERY_DATA/create_dataset/Methane_leakages_at_oil_refineries/data/test_set"
-    main(ROOT)
+    parser = argparse.ArgumentParser(description="Tile image files from a directory. Handles .png, .npy, and 4-channel GeoTIFFs.")
+    parser.add_argument(
+        "--input_dir",
+        type=str,
+        default="./input_data",
+        help="The directory where your input files (.png, .npy, .tif) are located.",
+    )
+    parser.add_argument(
+        "--destination_dir",
+        type=str,
+        default="../data/all_gt_masks",
+        help="The destination directory for the tiled masks.",
+    )
+    parser.add_argument(
+        "--file_type",
+        type=str,
+        choices=["png", "npy"],
+        default="png",
+        help="The file type for the output tiles.",
+    )
+
+    args = parser.parse_args()
+
+    # Create a placeholder input directory if it doesn't exist, to prevent errors.
+    if not os.path.exists(args.input_dir):
+        os.makedirs(args.input_dir)
+        print(f"Created placeholder input directory: {args.input_dir}")
+        print("Please place your input files in this directory and run the script again.")
+    else:
+        main(args.input_dir, args.destination_dir, args.file_type)
