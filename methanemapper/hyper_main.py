@@ -96,7 +96,11 @@ def get_args_parser():
 
     # dataset parameters
     parser.add_argument("--dataset_file", default="coco")
-    parser.add_argument("--hyper_path", type=str)
+    parser.add_argument("--train_img_folder", type=str, help="Path to the training images folder")
+    parser.add_argument("--train_ann_file", type=str, help="Path to the training annotation JSON file")
+    parser.add_argument("--val_img_folder", type=str, help="Path to the validation images folder")
+    parser.add_argument("--val_ann_file", type=str, help="Path to the validation annotation JSON file")
+    parser.add_argument("--stats_file_path", type=str, help="Path to the directory with statistics files")
     parser.add_argument("--remove_difficult", action="store_true")
 
     parser.add_argument("--device", default="cuda", help="device to use for training / testing")
