@@ -3,4 +3,3 @@ venv
 **/__pycache__/**
 methanemapper/data
 data/all_gt_masks
-train_dataset_generator/geotiff_input
