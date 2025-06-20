@@ -1,5 +1,5 @@
 venv
 *.pyc
 **/__pycache__/**
-methanemapper/data/train
-methanemapper/data/val
+methanemapper/data
+data/all_gt_masks

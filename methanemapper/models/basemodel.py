@@ -75,7 +75,7 @@ class ResnetBackbone(nn.Module):
 
     def __init__(self, name="resnet50", in_channels=3, out_channels=256, return_interm_layers=None):
         super().__init__()
-        backbone = getattr(torchvision.models, name)(pretrained=True, norm_layer=FrozenBatchNorm2d)
+        backbone = getattr(torchvision.models, name)(weights=models.ResNet50_Weights.DEFAULT, norm_layer=FrozenBatchNorm2d)
 
         backbone.conv1 = nn.Conv2d(in_channels, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
 
