@@ -257,11 +257,17 @@ def main(args):
         )
 
         log_stats = {
-            **{f"train_{k}": v for k, v in train_stats.items()},
-            **{f"test_{k}": v for k, v in test_stats.items()},
             "epoch": epoch,
             "n_parameters": n_parameters,
+            "lr": train_stats.get("lr", 0.0),
+            "train_loss": train_stats.get("loss"),
+            "train_class_error": train_stats.get("class_error"),
+            "test_loss": test_stats.get("loss"),
+            "test_class_error": test_stats.get("class_error"),
         }
+        # Add all other evaluation stats (AP/AR metrics) under the "test_" prefix
+        eval_metrics = {f"test_{k}": v for k, v in test_stats.items() if k not in ['loss', 'class_error']}
+        log_stats.update(eval_metrics)
 
         if args.use_wandb:
             # wandb logs and plots

@@ -3,7 +3,6 @@
 Train and eval functions used in main.py
 """
 import math
-import os
 import sys
 from typing import Iterable
 
@@ -32,7 +31,6 @@ def train_one_epoch(
     print_freq = 10
 
     for rgb_img, mf_img, raw_img, targets in metric_logger.log_every(data_loader, print_freq, header):
-        # import pdb; pdb.set_trace()
         rgb_img = rgb_img.to(device)
         mf_img = mf_img.to(device)
         raw_img = raw_img.to(device)
@@ -45,7 +43,6 @@ def train_one_epoch(
 
         # reduce losses over all GPUs for logging purposes
         loss_dict_reduced = utils.reduce_dict(loss_dict)
-        loss_dict_reduced_unscaled = {f"{k}_unscaled": v for k, v in loss_dict_reduced.items()}
         loss_dict_reduced_scaled = {k: v * weight_dict[k] for k, v in loss_dict_reduced.items() if k in weight_dict}
         losses_reduced_scaled = sum(loss_dict_reduced_scaled.values())
 
@@ -62,10 +59,18 @@ def train_one_epoch(
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm)
         optimizer.step()
 
-        metric_logger.update(loss=loss_value, **loss_dict_reduced_scaled, **loss_dict_reduced_unscaled)
-        metric_logger.update(class_error=loss_dict_reduced["class_error"])
-        metric_logger.update(lr=optimizer.param_groups[0]["lr"])
-        # break
+        log_data = {
+            'loss': loss_value,
+            'class_error': loss_dict_reduced['class_error'],
+            'lr': optimizer.param_groups[0]['lr'],
+            'loss_ce': loss_dict_reduced_scaled.get('loss_ce'),
+            'loss_bbox': loss_dict_reduced_scaled.get('loss_bbox'),
+            'loss_giou': loss_dict_reduced_scaled.get('loss_giou'),
+        }
+        # Filter out None values in case a loss is not present
+        log_data = {k: v for k, v in log_data.items() if v is not None}
+        metric_logger.update(**log_data)
+
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
     print("Averaged stats:", metric_logger)
@@ -100,11 +105,17 @@ def evaluate(dataset_file, model, criterion, postprocessors, data_loader, base_d
         # reduce losses over all GPUs for logging purposes
         loss_dict_reduced = utils.reduce_dict(loss_dict)
         loss_dict_reduced_scaled = {k: v * weight_dict[k] for k, v in loss_dict_reduced.items() if k in weight_dict}
-        loss_dict_reduced_unscaled = {f"{k}_unscaled": v for k, v in loss_dict_reduced.items()}
-        metric_logger.update(
-            loss=sum(loss_dict_reduced_scaled.values()), **loss_dict_reduced_scaled, **loss_dict_reduced_unscaled
-        )
-        metric_logger.update(class_error=loss_dict_reduced["class_error"])
+
+        log_data = {
+            'loss': sum(loss_dict_reduced_scaled.values()),
+            'class_error': loss_dict_reduced['class_error'],
+            'loss_ce': loss_dict_reduced_scaled.get('loss_ce'),
+            'loss_bbox': loss_dict_reduced_scaled.get('loss_bbox'),
+            'loss_giou': loss_dict_reduced_scaled.get('loss_giou'),
+        }
+        # Filter out None values in case a loss is not present
+        log_data = {k: v for k, v in log_data.items() if v is not None}
+        metric_logger.update(**log_data)
 
         orig_target_sizes = torch.stack([t["orig_size"] for t in targets], dim=0)
         image_size_list.append(orig_target_sizes)
@@ -117,9 +128,6 @@ def evaluate(dataset_file, model, criterion, postprocessors, data_loader, base_d
             preds[target["image_id"].item()] = output
             gts[target["image_id"].item()] = target
 
-        # if len(list(preds.keys())) > 5:
-        # 	break
-
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
     print("Averaged stats:", metric_logger)
@@ -129,7 +137,11 @@ def evaluate(dataset_file, model, criterion, postprocessors, data_loader, base_d
     else:
         evaluator = box_evaluator(preds, gts, image_size_list)
 
-    stats = evaluator.evaluate()
-    # accumulate predictions from all images
-    # stats = {k: meter.global_avg for k, meter in metric_logger.meters.items()}
+    evaluator_stats = evaluator.evaluate()
+
+    # Combine loss stats from the metric_logger with the evaluator's stats
+    stats = {k: meter.global_avg for k, meter in metric_logger.meters.items()}
+    if evaluator_stats is not None:
+        stats.update(evaluator_stats)
+
     return stats
