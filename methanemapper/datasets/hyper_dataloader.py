@@ -191,14 +191,17 @@ class LoadItems:
                 
                 # Check image dimensions to ensure they are 256x256 and not corrupt
                 try:
-                    rgb_shape = np.load(_rgb, mmap_mode='r').shape
+                    # rgb_shape = np.load(_rgb, mmap_mode='r').shape
                     mf_shape = np.load(_mf, mmap_mode='r').shape
-                    raw_shape = np.load(_raw, mmap_mode='r').shape
-                    print(f'rgb_shape: {rgb_shape}, mf_shape: {mf_shape}, raw_shape: {raw_shape}')
+                    # raw_shape = np.load(_raw, mmap_mode='r').shape
+                    # print(f'rgb_shape: {rgb_shape}, mf_shape: {mf_shape}, raw_shape: {raw_shape}')
 
-                    if not (rgb_shape[:-1] == mf_shape and mf_shape == raw_shape[:-1]
-                            and rgb_shape[:-1] == raw_shape[:-1]):
+                    if not (mf_shape[0] > 200 and mf_shape[1] > 200):
                         continue
+
+                    # if not (rgb_shape[:-1] == mf_shape and mf_shape == raw_shape[:-1]
+                    #         and rgb_shape[:-1] == raw_shape[:-1]):
+                    #     continue
 
                     # if not (
                     #         # rgb_shape[0] == 256 and rgb_shape[1] == 256 and
