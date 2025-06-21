@@ -151,7 +151,7 @@ class LoadItems:
             
             if anns:
                 print(f"Successfully loaded {len(anns)} annotations")
-                print("Sample annotation:", next(iter(anns.values())))
+                # print("Sample annotation:", next(iter(anns.values())))
         else:
             print("Warning: No 'annotations' key found in dataset")
 
