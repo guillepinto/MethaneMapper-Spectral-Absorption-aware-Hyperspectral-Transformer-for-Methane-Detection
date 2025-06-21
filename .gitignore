@@ -4,3 +4,4 @@ venv
 methanemapper/data/train
 methanemapper/data/val
 data/all_gt_masks
+methanemapper/exps
