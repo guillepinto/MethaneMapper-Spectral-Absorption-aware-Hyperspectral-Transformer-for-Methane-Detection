@@ -63,11 +63,11 @@ def split_annotations(input_json_path, output_dir, split_ratio=0.8, seed=42):
 
     print(f"Saving training annotations to {train_json_path}")
     with open(train_json_path, 'w') as f:
-        json.dump(train_data, f, indent=2)
+        json.dump(train_data, f)
 
     print(f"Saving validation annotations to {val_json_path}")
     with open(val_json_path, 'w') as f:
-        json.dump(val_data, f, indent=2)
+        json.dump(val_data, f)
 
     print("\nSplitting complete!")
     print(f"Training set: {len(train_annotations)} annotated images")
