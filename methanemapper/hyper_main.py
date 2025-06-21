@@ -11,7 +11,6 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, DistributedSampler
 
-import datasets
 import util.misc as utils
 from datasets import build_dataset, get_coco_api_from_dataset
 from hyper_engine import evaluate, train_one_epoch
