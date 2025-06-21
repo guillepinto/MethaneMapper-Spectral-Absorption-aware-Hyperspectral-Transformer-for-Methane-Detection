@@ -194,7 +194,7 @@ class LoadItems:
                     rgb_shape = np.load(_rgb, mmap_mode='r').shape
                     mf_shape = np.load(_mf, mmap_mode='r').shape
                     raw_shape = np.load(_raw, mmap_mode='r').shape
-                    # print(f'rgb_shape: {rgb_shape}, mf_shape: {mf_shape}, raw_shape: {raw_shape}')
+                    print(f'rgb_shape: {rgb_shape}, mf_shape: {mf_shape}, raw_shape: {raw_shape}')
 
                     if not (rgb_shape[:-1] == mf_shape and mf_shape == raw_shape[:-1]
                             and rgb_shape[:-1] == raw_shape[:-1]):
