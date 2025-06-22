@@ -126,8 +126,8 @@ def main(args):
             "lr_backbone": 0.000005,
         }
 
-    utils.init_distributed_mode(args)
-    print("git:\n  {}\n".format(utils.get_sha()))
+    # utils.init_distributed_mode(args)
+    # print("git:\n  {}\n".format(utils.get_sha()))
 
     if args.frozen_weights is not None:
         assert args.masks, "Frozen training is meant for segmentation only"
