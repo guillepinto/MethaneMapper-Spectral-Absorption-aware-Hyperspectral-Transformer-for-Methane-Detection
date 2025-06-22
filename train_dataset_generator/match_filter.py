@@ -1,7 +1,6 @@
 import numpy as np
 import spectral.algorithms as algo
-from spectral.algorithms.detectors import MatchedFilter, matched_filter
-from utils.arg_parser import args
+from spectral.algorithms.detectors import matched_filter
 
 
 def segMatchedFilterRect(b_img_data, segmentation, target, num_sensors, contours):
@@ -24,10 +23,8 @@ def segMatchedFilterRect(b_img_data, segmentation, target, num_sensors, contours
     num_classes = num_classes - 1
     segmentation_mask = segmentation_mask[1:, :, :]
 
-    # import pdb; pdb.set_trace()
     curr_idx = 0
     all_snsr = len(contours)
-    prv_clstr_cov = 0
     for _count in range(num_sensors, all_snsr + num_sensors, num_sensors):
         # Get first num_sensors locations in x,y spatial
         print(f"computing mf output for sensor set {curr_idx}: {_count}")
@@ -68,7 +65,7 @@ def segMatchedFilterRect(b_img_data, segmentation, target, num_sensors, contours
     return alpha
 
 
-def segmentation_match_filter(b_img_data, segmentation, target, pxl_batch):
+def segmentation_match_filter(b_img_data, segmentation, target, pxl_batch, segmentation_mf_method):
     """Takes image, segmentation masks, target signature, and pxl_batch to compute match filter outputs from pixels
     belonging to same segmentation class class 1 is background (black regions after ortho-correction), ignore this
     class in computations."""
@@ -95,17 +92,23 @@ def segmentation_match_filter(b_img_data, segmentation, target, pxl_batch):
     for i in range(num_classes):
         print(f"Calculating gausian stats, mean, cov of background for cluster {i}")
 
-        if args.segmentation_mf == "column_wise":
+        if segmentation_mf_method == "column_wise":
             # Get all pixels from specific segmentation bin in columnwise order
             clustr_pxls = b_img_data.transpose()[:, segmentation_mask[i].transpose()].transpose()
-        elif args.segmentation_mf == "row_wise":
+        elif segmentation_mf_method == "row_wise":
             # Get all pixels from specific segmentation bin in rowwise order
             clustr_pxls = b_img_data[segmentation_mask[i], :]
 
-        clustr_mf_output = np.zeros(clustr_pxls.shape[0])
         num_pxls, _ = clustr_pxls.shape  # How many pixels in this segmentation bin
         print(f"	Number of pixels in cluster {i}: {num_pxls}")
 
+        # To compute a non-singular covariance matrix, the number of samples (pixels)
+        # must be greater than the number of features (bands).
+        if num_pxls <= bands:
+            print(f"	Skipping cluster {i}: Not enough pixels ({num_pxls}) for {bands} bands to compute a stable covariance matrix.")
+            continue
+
+        clustr_mf_output = np.zeros(clustr_pxls.shape[0])
         clustr_pxls = clustr_pxls.reshape(clustr_pxls.shape[0], 1, clustr_pxls.shape[1])
         curr_idx = 0
         while curr_idx < num_pxls:

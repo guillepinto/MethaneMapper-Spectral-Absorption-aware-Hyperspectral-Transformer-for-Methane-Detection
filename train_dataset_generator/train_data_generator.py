@@ -10,16 +10,13 @@ Created on Wed Dec 22 14:50:48 2021.
 
 import os
 import numpy as np
-import glob
 import spectral as spy
 import spectral.io.envi as envi
-import spectral.algorithms as algo
-from spectral.algorithms.detectors import MatchedFilter, matched_filter
 from joblib import Parallel, delayed
 
 # custom imports
 from utils.land_cover_cls import Indexes
-from utils.arg_parser import args
+from utils.arg_parser import get_train_gen_parser
 from match_filter import segmentation_match_filter, match_filter, segMatchedFilterRect
 
 # from utils.rectify_mfout import Ortho_Correction
@@ -155,6 +152,10 @@ class DataLoader:
 
 
 def main():
+    # --- Argument Parsing ---
+    parser = get_train_gen_parser()
+    args = parser.parse_args()
+    
     data_loader = DataLoader(DIRECTORY)
     index = Indexes(args)
     locs = GetEdgeLocs()
@@ -168,12 +169,12 @@ def main():
     print(t_mean.shape)
 
     Parallel(n_jobs=1)(
-        delayed(computeMF)(file_path, data_loader, index, locs, tiler, pxl_batch_size, num_sensors, t_mean)
+        delayed(computeMF)(file_path, data_loader, index, locs, tiler, pxl_batch_size, num_sensors, t_mean, args)
         for file_path in data_loader.file_paths
     )
 
 
-def computeMF(file_path, data_loader, index, locs, tiler, pxl_batch_size, num_sensors, t_mean):
+def computeMF(file_path, data_loader, index, locs, tiler, pxl_batch_size, num_sensors, t_mean, args):
     # checking if file has already been computed
     _temp_filename = file_path.split("/")[-2]
     _temp_mf_filepath = f"{ROOT}/mf_output/{_temp_filename}_img.npy"
